@@ -1,25 +1,25 @@
 const path = require('path');
 
-const { app, BrowserWindow, Tray, Menu } = require('electron');
+const {dialog,  app, BrowserWindow, Tray, Menu } = require('electron');
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
+let win = null;
+const instanceLock = app.requestSingleInstanceLock();
+const isMacOS = process.platform === 'darwin';
 
 if (require('electron-squirrel-startup')) app.quit();
 
 const PORT = isDev ? '5173' : '51735';
+const ICON = 'icon-rounded.png';
+const ICON_TEMPLATE = 'iconTemplate.png';
 
 function createWindow() {
-  let iconPath = '';
-  if (isDev) {
-    iconPath = path.join(__dirname, '../public/icon-rounded.png');
-  } else {
-    iconPath = path.join(__dirname, '../dist/icon-rounded.png');
-  }
   autoUpdater.checkForUpdatesAndNotify();
 
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
+	autoHideMenuBar: true,
     show: false,
-    icon: iconPath,
+    icon: assetPath(ICON),
   });
 
   createTray(win);
@@ -38,12 +38,16 @@ function createWindow() {
   return win;
 }
 
+const assetPath = (asset) => {
+  return path.join(
+    __dirname,
+    isDev ? `../public/${asset}` : `../dist/${asset}`
+  )
+}
+
 const createTray = (window) => {
   const tray = new Tray(
-    path.join(
-      __dirname,
-      isDev ? '../public/icon-rounded.png' : '../dist/icon-rounded.png'
-    )
+    assetPath(!isMacOS ? ICON : ICON_TEMPLATE)
   );
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -72,19 +76,34 @@ const createTray = (window) => {
   return tray;
 };
 
-app.whenReady().then(createWindow);
-
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (!isMacOS) {
     app.quit();
   }
 });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+process.on('uncaughtException', (error) => {
+  // Perform any necessary cleanup tasks here
+  dialog.showErrorBox('An error occurred', error.stack);
+
+  // Exit the app
+  process.exit(1);
 });
+
+if (!instanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    win = createWindow()
+  })
+}
 
 const createServer = () => {
   // Dependencies
